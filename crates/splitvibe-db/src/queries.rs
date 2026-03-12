@@ -228,3 +228,48 @@ pub async fn list_expenses_for_group(
     .fetch_all(pool)
     .await
 }
+
+/// Raw payer record for balance calculation.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ExpensePayerRecord {
+    pub expense_id: String,
+    pub user_id: String,
+    pub amount: Decimal,
+}
+
+/// Raw split record for balance calculation.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ExpenseSplitRecord {
+    pub expense_id: String,
+    pub user_id: String,
+    pub amount: Decimal,
+}
+
+/// Fetch all payer and split records for non-deleted expenses in a group.
+/// Returns (payers, splits) for use with the balance algorithm.
+pub async fn get_expense_data_for_balances(
+    pool: &PgPool,
+    group_id: &str,
+) -> Result<(Vec<ExpensePayerRecord>, Vec<ExpenseSplitRecord>), sqlx::Error> {
+    let payers = sqlx::query_as::<_, ExpensePayerRecord>(
+        r#"SELECT ep.expense_id, ep.user_id, ep.amount
+           FROM expense_payers ep
+           JOIN expenses e ON ep.expense_id = e.id
+           WHERE e.group_id = $1 AND e.deleted = false"#,
+    )
+    .bind(group_id)
+    .fetch_all(pool)
+    .await?;
+
+    let splits = sqlx::query_as::<_, ExpenseSplitRecord>(
+        r#"SELECT es.expense_id, es.user_id, es.amount
+           FROM expense_splits es
+           JOIN expenses e ON es.expense_id = e.id
+           WHERE e.group_id = $1 AND e.deleted = false"#,
+    )
+    .bind(group_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok((payers, splits))
+}
