@@ -1,22 +1,27 @@
 use leptos::prelude::*;
+use leptos_router::hooks::use_query_map;
 use splitvibe_core::models::MOCK_USERS;
 
 #[component]
-pub fn LoginPage(#[prop(optional)] error: Option<String>) -> impl IntoView {
-    let error_message = error.map(|e| match e.as_str() {
-        "google_not_configured" => {
-            "Google OAuth is not configured. Use mock login for development.".to_string()
-        }
-        _ => format!("Login error: {}", e),
-    });
+pub fn LoginPage() -> impl IntoView {
+    let query = use_query_map();
+    let error_message = move || {
+        query.read().get("error").map(|e| match e.as_str() {
+            "google_not_configured" => {
+                "Google OAuth is not configured. Use mock login for development.".to_string()
+            }
+            _ => format!("Login error: {}", e),
+        })
+    };
 
     view! {
         <div class="container">
             <h1>"Sign In"</h1>
-            {error_message
-                .map(|msg| {
+            {move || {
+                error_message().map(|msg| {
                     view! { <div class="error-message">{msg}</div> }
-                })}
+                })
+            }}
             <div class="login-options">
                 <h2>"Development Login"</h2>
                 {MOCK_USERS
@@ -39,7 +44,7 @@ pub fn LoginPage(#[prop(optional)] error: Option<String>) -> impl IntoView {
             </div>
             <div class="login-options">
                 <h2>"Production Login"</h2>
-                <a href="/auth/google" class="google-login-btn">"Sign in with Google"</a>
+                <a href="/auth/google" rel="external" class="google-login-btn">"Sign in with Google"</a>
             </div>
         </div>
     }

@@ -36,7 +36,7 @@ pub fn App() -> impl IntoView {
             <main>
                 <Routes fallback=|| view! { <NotFound/> }>
                     <Route path=path!("/") view=HomePage/>
-                    <Route path=path!("/auth/login") view=|| view! { <LoginPage/> }/>
+                    <Route path=path!("/auth/login") view=LoginPage/>
                 </Routes>
             </main>
         </Router>

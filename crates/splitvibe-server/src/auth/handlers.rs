@@ -46,8 +46,9 @@ pub async fn mock_login(
         return HttpResponse::InternalServerError().body("Database error");
     }
 
-    // Clear any existing session and set new user
-    session::clear_session(&session);
+    // Renew session ID and clear old data for clean switch
+    session.renew();
+    session.remove("user");
 
     let session_user = SessionUser {
         id: user_id,
