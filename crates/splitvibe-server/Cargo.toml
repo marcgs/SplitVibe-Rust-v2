@@ -30,6 +30,8 @@ tracing = "0.1"
 dotenvy = { version = "0.15", optional = true }
 chrono = { version = "0.4", optional = true }
 cuid2 = { version = "0.1", optional = true }
+rust_decimal = { version = "1", optional = true }
+urlencoding = { version = "2", optional = true }
 
 [features]
 default = []
@@ -47,6 +49,8 @@ ssr = [
     "dep:dotenvy",
     "dep:chrono",
     "dep:cuid2",
+    "dep:rust_decimal",
+    "dep:urlencoding",
 ]
 hydrate = [
     "leptos/hydrate",

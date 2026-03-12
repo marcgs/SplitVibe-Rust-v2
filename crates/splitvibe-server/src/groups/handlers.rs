@@ -254,16 +254,52 @@ pub async fn groups_detail(
         })
         .collect();
 
+    let expenses =
+        match splitvibe_db::queries::list_expenses_for_group(pool.get_ref(), &group_id).await {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::error!("Failed to list expenses: {}", e);
+                return HttpResponse::InternalServerError().body("Database error");
+            }
+        };
+
+    let expenses_html = if expenses.is_empty() {
+        r#"<p class="empty-state">No expenses yet.</p>"#.to_string()
+    } else {
+        let items: Vec<String> = expenses
+            .iter()
+            .map(|e| {
+                format!(
+                    r#"<div class="expense-item">
+                        <div class="expense-info">
+                            <span class="expense-title">{title}</span>
+                            <span class="expense-meta">{date} &middot; paid by {payer}</span>
+                        </div>
+                        <span class="expense-amount">${amount}</span>
+                    </div>"#,
+                    title = html_escape(&e.title),
+                    amount = e.amount.round_dp(2),
+                    payer = html_escape(&e.payer_name),
+                    date = e.expense_date,
+                )
+            })
+            .collect();
+        format!(r#"<div class="expense-list">{}</div>"#, items.join("\n"))
+    };
+
     let invite_url = format!("/join/{}", html_escape(&group.invite_token));
 
     let content = format!(
         r#"<h1>{name}</h1>
         <div class="group-detail">
-            <div class="group-invite">
+            <div class="group-actions">
+                <a href="/groups/{group_id}/expenses/new" class="btn btn-primary">Add Expense</a>
                 <button type="button" class="btn btn-secondary" id="copy-invite"
                     data-invite-url="{invite_url}"
                     onclick="navigator.clipboard.writeText(window.location.origin + this.dataset.inviteUrl).then(function(){{document.getElementById('copy-invite').textContent='Copied!';setTimeout(function(){{document.getElementById('copy-invite').textContent='Copy invite link'}},2000)}})">Copy invite link</button>
             </div>
+            <h2>Expenses</h2>
+            {expenses}
             <h2>Members ({count})</h2>
             <div class="member-list">
                 {members}
@@ -271,7 +307,9 @@ pub async fn groups_detail(
             <a href="/groups" class="btn btn-secondary">Back to groups</a>
         </div>"#,
         name = html_escape(&group.name),
+        group_id = html_escape(&group.id),
         invite_url = invite_url,
+        expenses = expenses_html,
         count = members.len(),
         members = members_html.join("\n"),
     );
@@ -340,6 +378,299 @@ pub async fn join_group(
         }
         Err(e) => {
             tracing::error!("Failed to add group member: {}", e);
+            HttpResponse::InternalServerError().body("Database error")
+        }
+    }
+}
+
+/// GET /groups/{id}/expenses/new — show the add expense form.
+pub async fn expenses_new(
+    session: Session,
+    pool: web::Data<sqlx::PgPool>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let user = match require_auth(&session) {
+        Ok(u) => u,
+        Err(r) => return r,
+    };
+
+    let group_id = path.into_inner();
+
+    let group = match splitvibe_db::queries::get_group_by_id(pool.get_ref(), &group_id).await {
+        Ok(Some(g)) => g,
+        Ok(None) => return HttpResponse::NotFound().body("Group not found"),
+        Err(e) => {
+            tracing::error!("Failed to get group: {}", e);
+            return HttpResponse::InternalServerError().body("Database error");
+        }
+    };
+
+    let members = match splitvibe_db::queries::get_group_members(pool.get_ref(), &group_id).await {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::error!("Failed to get group members: {}", e);
+            return HttpResponse::InternalServerError().body("Database error");
+        }
+    };
+
+    let content = expense_form_html(&group.id, &group.name, &members, None, None);
+    let navbar = navbar_html(&user);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(page_html("Add Expense", &navbar, &content))
+}
+
+fn expense_form_html(
+    group_id: &str,
+    group_name: &str,
+    members: &[splitvibe_db::queries::GroupMemberInfo],
+    error: Option<&str>,
+    form_values: Option<&CreateExpenseForm>,
+) -> String {
+    let payer_options: Vec<String> = members
+        .iter()
+        .map(|m| {
+            let selected = form_values
+                .map(|f| f.payer_id == m.user_id)
+                .unwrap_or(false);
+            format!(
+                r#"<option value="{id}" {sel}>{name}</option>"#,
+                id = html_escape(&m.user_id),
+                name = html_escape(&m.display_name),
+                sel = if selected { "selected" } else { "" },
+            )
+        })
+        .collect();
+
+    let member_checkboxes: Vec<String> = members
+        .iter()
+        .map(|m| {
+            let checked = form_values
+                .map(|f| f.split_members.contains(&m.user_id))
+                .unwrap_or(true); // default: all checked
+            format!(
+                r#"<label class="checkbox-label">
+                    <input type="checkbox" name="split_members" value="{id}" {checked}/>
+                    {name}
+                </label>"#,
+                id = html_escape(&m.user_id),
+                name = html_escape(&m.display_name),
+                checked = if checked { "checked" } else { "" },
+            )
+        })
+        .collect();
+
+    let error_html = error
+        .map(|msg| format!(r#"<div class="error-message">{}</div>"#, html_escape(msg)))
+        .unwrap_or_default();
+
+    let amount_val = form_values
+        .map(|f| html_escape(&f.amount))
+        .unwrap_or_default();
+    let title_val = form_values
+        .map(|f| html_escape(&f.title))
+        .unwrap_or_default();
+    let date_val = form_values
+        .map(|f| f.date.clone())
+        .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
+
+    format!(
+        r#"<h1>Add Expense to {group_name}</h1>
+        {error_html}
+        <form method="post" action="/groups/{group_id}/expenses" class="form">
+            <div class="form-group">
+                <label for="title">Description</label>
+                <input type="text" id="title" name="title" required placeholder="e.g. Dinner" class="form-input" value="{title_val}"/>
+            </div>
+            <div class="form-group">
+                <label for="amount">Amount ($)</label>
+                <input type="number" id="amount" name="amount" required step="0.01" min="0.01" placeholder="0.00" class="form-input" value="{amount_val}"/>
+            </div>
+            <div class="form-group">
+                <label for="payer_id">Paid by</label>
+                <select id="payer_id" name="payer_id" class="form-input">
+                    {payer_options}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Split among</label>
+                <div class="checkbox-group">
+                    {member_checkboxes}
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="date">Date</label>
+                <input type="date" id="date" name="date" class="form-input" value="{date_val}"/>
+            </div>
+            <button type="submit" class="btn btn-primary">Add Expense</button>
+            <a href="/groups/{group_id}" class="btn btn-secondary">Cancel</a>
+        </form>"#,
+        group_name = html_escape(group_name),
+        group_id = html_escape(group_id),
+        payer_options = payer_options.join("\n"),
+        member_checkboxes = member_checkboxes.join("\n"),
+    )
+}
+
+#[derive(Clone)]
+pub struct CreateExpenseForm {
+    pub title: String,
+    pub amount: String,
+    pub payer_id: String,
+    pub split_members: Vec<String>,
+    pub date: String,
+}
+
+fn parse_expense_form(body: &[u8]) -> CreateExpenseForm {
+    let body_str = String::from_utf8_lossy(body);
+    let mut title = String::new();
+    let mut amount = String::new();
+    let mut payer_id = String::new();
+    let mut split_members = Vec::new();
+    let mut date = String::new();
+
+    for pair in body_str.split('&') {
+        let mut parts = pair.splitn(2, '=');
+        let key = parts.next().unwrap_or("");
+        let value = parts.next().unwrap_or("").replace('+', " ");
+        let value = urlencoding::decode(&value)
+            .unwrap_or(std::borrow::Cow::Borrowed(""))
+            .to_string();
+        match key {
+            "title" => title = value,
+            "amount" => amount = value,
+            "payer_id" => payer_id = value,
+            "split_members" => {
+                if !value.is_empty() {
+                    split_members.push(value);
+                }
+            }
+            "date" => date = value,
+            _ => {}
+        }
+    }
+
+    CreateExpenseForm {
+        title,
+        amount,
+        payer_id,
+        split_members,
+        date,
+    }
+}
+
+/// POST /groups/{id}/expenses — create a new expense.
+pub async fn expenses_create(
+    session: Session,
+    pool: web::Data<sqlx::PgPool>,
+    path: web::Path<String>,
+    body: web::Bytes,
+) -> HttpResponse {
+    // Parse form manually to handle repeated split_members[] fields
+    let form = parse_expense_form(&body);
+    let user = match require_auth(&session) {
+        Ok(u) => u,
+        Err(r) => return r,
+    };
+
+    let group_id = path.into_inner();
+
+    let group = match splitvibe_db::queries::get_group_by_id(pool.get_ref(), &group_id).await {
+        Ok(Some(g)) => g,
+        Ok(None) => return HttpResponse::NotFound().body("Group not found"),
+        Err(e) => {
+            tracing::error!("Failed to get group: {}", e);
+            return HttpResponse::InternalServerError().body("Database error");
+        }
+    };
+
+    let members = match splitvibe_db::queries::get_group_members(pool.get_ref(), &group_id).await {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::error!("Failed to get group members: {}", e);
+            return HttpResponse::InternalServerError().body("Database error");
+        }
+    };
+
+    // Validate
+    let show_error = |msg: &str| {
+        let content = expense_form_html(&group.id, &group.name, &members, Some(msg), Some(&form));
+        let navbar = navbar_html(&user);
+        HttpResponse::Ok()
+            .content_type("text/html; charset=utf-8")
+            .body(page_html("Add Expense", &navbar, &content))
+    };
+
+    if let Err(msg) = splitvibe_core::validation::validate_expense_title(&form.title) {
+        return show_error(msg);
+    }
+
+    let amount = match splitvibe_core::validation::validate_expense_amount(&form.amount) {
+        Ok(a) => a,
+        Err(msg) => return show_error(msg),
+    };
+
+    if let Err(msg) = splitvibe_core::validation::validate_split_members(&form.split_members) {
+        return show_error(msg);
+    }
+
+    // Build participant names for the split calculation
+    let participant_names: Vec<(String, String)> = form
+        .split_members
+        .iter()
+        .filter_map(|uid| {
+            members
+                .iter()
+                .find(|m| m.user_id == *uid)
+                .map(|m| (uid.clone(), m.display_name.clone()))
+        })
+        .collect();
+
+    let names_only: Vec<String> = participant_names.iter().map(|(_, n)| n.clone()).collect();
+
+    let split_result = splitvibe_core::split::split_equal(amount, names_only);
+
+    // Map split results back to user IDs
+    let splits: Vec<(String, String, rust_decimal::Decimal)> = split_result
+        .shares
+        .iter()
+        .map(|(name, share_amount)| {
+            let user_id = participant_names
+                .iter()
+                .find(|(_, n)| n == name)
+                .map(|(uid, _)| uid.clone())
+                .unwrap_or_default();
+            (cuid2::create_id(), user_id, *share_amount)
+        })
+        .collect();
+
+    let expense_date = form
+        .date
+        .parse::<chrono::NaiveDate>()
+        .unwrap_or_else(|_| chrono::Local::now().date_naive());
+
+    let expense_id = cuid2::create_id();
+    let payer_record_id = cuid2::create_id();
+
+    match splitvibe_db::queries::create_expense(
+        pool.get_ref(),
+        &expense_id,
+        &group.id,
+        form.title.trim(),
+        amount,
+        &form.payer_id,
+        &user.id,
+        expense_date,
+        &payer_record_id,
+        &splits,
+    )
+    .await
+    {
+        Ok(_) => HttpResponse::SeeOther()
+            .insert_header(("Location", format!("/groups/{}", group.id)))
+            .finish(),
+        Err(e) => {
+            tracing::error!("Failed to create expense: {}", e);
             HttpResponse::InternalServerError().body("Database error")
         }
     }
