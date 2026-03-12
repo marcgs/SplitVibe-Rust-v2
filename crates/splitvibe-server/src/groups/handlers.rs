@@ -907,6 +907,10 @@ fn settlement_form_html(
                 <label for="amount">Amount ($)</label>
                 <input type="number" id="amount" name="amount" required step="0.01" min="0.01" placeholder="0.00" class="form-input"/>
             </div>
+            <div class="form-group">
+                <label for="date">Date</label>
+                <input type="date" id="date" name="date" class="form-input" value="{today}"/>
+            </div>
             <button type="submit" class="btn btn-primary">Record Settlement</button>
             <a href="/groups/{group_id}" class="btn btn-secondary">Cancel</a>
         </form>"#,
@@ -914,6 +918,7 @@ fn settlement_form_html(
         group_id = html_escape(group_id),
         payer_options = payer_options.join("\n"),
         payee_options = payee_options.join("\n"),
+        today = chrono::Local::now().format("%Y-%m-%d"),
     )
 }
 
