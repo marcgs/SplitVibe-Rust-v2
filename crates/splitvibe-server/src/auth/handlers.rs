@@ -61,8 +61,16 @@ pub async fn mock_login(
         return HttpResponse::InternalServerError().body("Session error");
     }
 
+    // Check for redirect_after_login (e.g., from invite link flow)
+    let redirect = session
+        .get::<String>("redirect_after_login")
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "/groups".to_string());
+    session.remove("redirect_after_login");
+
     HttpResponse::SeeOther()
-        .insert_header(("Location", "/groups"))
+        .insert_header(("Location", redirect))
         .finish()
 }
 

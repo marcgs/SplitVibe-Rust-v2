@@ -10,6 +10,7 @@ async fn main() -> std::io::Result<()> {
     use leptos_actix::{generate_route_list, LeptosRoutes};
     use splitvibe_server::app::{shell, App};
     use splitvibe_server::auth;
+    use splitvibe_server::groups;
 
     dotenvy::dotenv().ok();
 
@@ -66,8 +67,15 @@ async fn main() -> std::io::Result<()> {
                 "/api/auth/me",
                 web::get().to(auth::handlers::get_current_user),
             )
-            // Protected groups page (SSR with auth check)
-            .route("/groups", web::get().to(groups_page))
+            // Group routes (SSR with auth check)
+            .route("/groups", web::get().to(groups::handlers::groups_list))
+            .route("/groups/new", web::get().to(groups::handlers::groups_new))
+            .route("/groups", web::post().to(groups::handlers::groups_create))
+            .route(
+                "/groups/{id}",
+                web::get().to(groups::handlers::groups_detail),
+            )
+            .route("/join/{token}", web::get().to(groups::handlers::join_group))
             // Leptos routes
             .leptos_routes(routes.clone(), {
                 let options = leptos_options.clone();
@@ -103,67 +111,6 @@ async fn main() -> std::io::Result<()> {
     .bind(&addr)?
     .run()
     .await
-}
-
-/// Server-side rendered groups page with authentication check.
-#[cfg(feature = "ssr")]
-async fn groups_page(session: actix_session::Session) -> actix_web::HttpResponse {
-    use splitvibe_server::auth::session::get_session_user;
-
-    let user = get_session_user(&session);
-
-    match user {
-        Some(user) => {
-            let avatar_html = user
-                .avatar_url
-                .as_deref()
-                .map(|url| {
-                    format!(
-                        r#"<img src="{}" alt="avatar" class="navbar-avatar" width="32" height="32"/>"#,
-                        url
-                    )
-                })
-                .unwrap_or_default();
-
-            let html = format!(
-                r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SplitVibe - Groups</title>
-    <link id="leptos" rel="stylesheet" href="/pkg/splitvibe.css">
-</head>
-<body>
-    <nav class="navbar">
-        <div class="navbar-brand"><a href="/">SplitVibe</a></div>
-        <div class="navbar-user">
-            {avatar}
-            <span class="navbar-username">{name}</span>
-            <form method="post" action="/auth/logout" class="navbar-logout">
-                <button type="submit">Sign out</button>
-            </form>
-        </div>
-    </nav>
-    <main>
-        <div class="container">
-            <h1>My Groups</h1>
-            <p>No groups yet. Create one to get started!</p>
-        </div>
-    </main>
-</body>
-</html>"#,
-                avatar = avatar_html,
-                name = user.display_name,
-            );
-            actix_web::HttpResponse::Ok()
-                .content_type("text/html; charset=utf-8")
-                .body(html)
-        }
-        None => actix_web::HttpResponse::SeeOther()
-            .insert_header(("Location", "/auth/login"))
-            .finish(),
-    }
 }
 
 #[cfg(not(feature = "ssr"))]

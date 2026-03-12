@@ -104,3 +104,133 @@ a:hover {
 .navbar-logout button:hover {
     background: #edf2f7;
 }
+
+.btn {
+    display: inline-block;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    cursor: pointer;
+    text-decoration: none;
+    border: 1px solid #e2e8f0;
+    transition: background 0.2s;
+}
+
+.btn-primary {
+    background: #4299e1;
+    color: white;
+    border-color: #4299e1;
+}
+
+.btn-primary:hover {
+    background: #3182ce;
+    text-decoration: none;
+    color: white;
+}
+
+.btn-secondary {
+    background: white;
+    color: #333;
+}
+
+.btn-secondary:hover {
+    background: #edf2f7;
+    text-decoration: none;
+}
+
+.group-list {
+    margin: 1.5rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.group-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    text-decoration: none;
+    color: #333;
+    transition: background 0.2s;
+}
+
+.group-card:hover {
+    background: #edf2f7;
+    text-decoration: none;
+}
+
+.group-card-name {
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.group-card-members {
+    color: #718096;
+    font-size: 0.875rem;
+}
+
+.form {
+    max-width: 400px;
+    margin: 1.5rem auto;
+    text-align: left;
+}
+
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-weight: 500;
+}
+
+.form-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+    font-size: 1rem;
+    box-sizing: border-box;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #4299e1;
+    box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
+}
+
+.group-detail {
+    text-align: left;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.group-invite {
+    margin: 1rem 0;
+}
+
+.member-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 1rem 0;
+}
+
+.member-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+}
+
+.member-avatar {
+    border-radius: 50%;
+}
