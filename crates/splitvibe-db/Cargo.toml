@@ -1,0 +1,8 @@
+[package]
+name = "splitvibe-db"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "migrate"] }
+serde = { version = "1", features = ["derive"] }

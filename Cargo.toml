@@ -1,0 +1,22 @@
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[[workspace.metadata.leptos]]
+name = "splitvibe"
+bin-package = "splitvibe-server"
+lib-package = "splitvibe-server"
+site-root = "target/site"
+site-pkg-dir = "pkg"
+style-file = "crates/splitvibe-server/style/main.css"
+site-addr = "127.0.0.1:3000"
+reload-port = 3001
+bin-features = ["ssr"]
+lib-features = ["hydrate"]
+lib-profile-release = "wasm-release"
+
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
