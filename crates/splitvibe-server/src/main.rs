@@ -56,6 +56,12 @@ async fn main() -> std::io::Result<()> {
                     )
                     .build(),
             )
+            // Health check
+            .route(
+                "/api/health",
+                web::get()
+                    .to(|| async { HttpResponse::Ok().json(serde_json::json!({"status": "ok"})) }),
+            )
             // Auth routes (before Leptos routes)
             .route(
                 "/auth/mock-login",
