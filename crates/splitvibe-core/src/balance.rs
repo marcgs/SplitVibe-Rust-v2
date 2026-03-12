@@ -18,20 +18,39 @@ pub struct ExpenseEntry {
     pub splits: Vec<(String, Decimal)>,
 }
 
-/// Calculate simplified debts from a list of expense entries.
+/// A settlement entry: payer paid payee to settle a debt.
+#[derive(Debug, Clone)]
+pub struct SettlementEntry {
+    /// User ID of who made the payment.
+    pub payer: String,
+    /// User ID of who received the payment.
+    pub payee: String,
+    /// Amount paid.
+    pub amount: Decimal,
+}
+
+/// Calculate simplified debts from expenses and settlements.
 ///
 /// Uses a greedy min-cash-flow algorithm:
-/// 1. Compute each person's net balance (paid - owed).
-/// 2. Repeatedly match the person who owes the most with the person owed the most.
-/// 3. Transfer the minimum of the two and repeat until settled.
+/// 1. Compute each person's net balance (paid - owed) from expenses.
+/// 2. Apply settlements (payer→payee transfers reduce net balances).
+/// 3. Repeatedly match the person who owes the most with the person owed the most.
 ///
 /// Returns debts sorted by (from, to) for deterministic output.
 pub fn calculate_debts(entries: &[ExpenseEntry]) -> Vec<Debt> {
-    if entries.is_empty() {
+    calculate_debts_with_settlements(entries, &[])
+}
+
+/// Calculate debts accounting for both expenses and settlements.
+pub fn calculate_debts_with_settlements(
+    entries: &[ExpenseEntry],
+    settlements: &[SettlementEntry],
+) -> Vec<Debt> {
+    if entries.is_empty() && settlements.is_empty() {
         return Vec::new();
     }
 
-    // Step 1: compute net balances
+    // Step 1: compute net balances from expenses
     let mut balances: HashMap<String, Decimal> = HashMap::new();
 
     for entry in entries {
@@ -41,6 +60,12 @@ pub fn calculate_debts(entries: &[ExpenseEntry]) -> Vec<Debt> {
         for (user_id, amount) in &entry.splits {
             *balances.entry(user_id.clone()).or_default() -= amount;
         }
+    }
+
+    // Step 2: apply settlements (payer pays payee → payer's balance goes up, payee's goes down)
+    for s in settlements {
+        *balances.entry(s.payer.clone()).or_default() += s.amount;
+        *balances.entry(s.payee.clone()).or_default() -= s.amount;
     }
 
     // Step 2: greedy min-cash-flow
@@ -217,6 +242,91 @@ mod tests {
         ];
 
         let debts = calculate_debts(&entries);
+        assert!(debts.is_empty());
+    }
+
+    #[test]
+    fn test_settlement_clears_debt() {
+        // Alice pays $90 split 3 ways → Bob owes $30, Charlie owes $30
+        // Bob settles $30 with Alice → Bob no longer owes
+        let entries = vec![ExpenseEntry {
+            payer: "Alice".into(),
+            splits: vec![
+                ("Alice".into(), dec!(30.00)),
+                ("Bob".into(), dec!(30.00)),
+                ("Charlie".into(), dec!(30.00)),
+            ],
+        }];
+
+        let settlements = vec![SettlementEntry {
+            payer: "Bob".into(),
+            payee: "Alice".into(),
+            amount: dec!(30.00),
+        }];
+
+        let debts = calculate_debts_with_settlements(&entries, &settlements);
+        assert_eq!(debts.len(), 1);
+        assert_eq!(
+            debts[0],
+            Debt {
+                from: "Charlie".into(),
+                to: "Alice".into(),
+                amount: dec!(30.00),
+            }
+        );
+    }
+
+    #[test]
+    fn test_settlement_partial() {
+        // Alice pays $90 split 3 ways → Bob owes $30
+        // Bob settles $10 → Bob still owes $20
+        let entries = vec![ExpenseEntry {
+            payer: "Alice".into(),
+            splits: vec![
+                ("Alice".into(), dec!(30.00)),
+                ("Bob".into(), dec!(30.00)),
+                ("Charlie".into(), dec!(30.00)),
+            ],
+        }];
+
+        let settlements = vec![SettlementEntry {
+            payer: "Bob".into(),
+            payee: "Alice".into(),
+            amount: dec!(10.00),
+        }];
+
+        let debts = calculate_debts_with_settlements(&entries, &settlements);
+        let bob_to_alice = debts.iter().find(|d| d.from == "Bob" && d.to == "Alice");
+        assert_eq!(bob_to_alice.unwrap().amount, dec!(20.00));
+    }
+
+    #[test]
+    fn test_full_settlement_clears_all() {
+        // Alice pays $90 split 3 ways
+        // Both Bob and Charlie settle $30 each → all settled
+        let entries = vec![ExpenseEntry {
+            payer: "Alice".into(),
+            splits: vec![
+                ("Alice".into(), dec!(30.00)),
+                ("Bob".into(), dec!(30.00)),
+                ("Charlie".into(), dec!(30.00)),
+            ],
+        }];
+
+        let settlements = vec![
+            SettlementEntry {
+                payer: "Bob".into(),
+                payee: "Alice".into(),
+                amount: dec!(30.00),
+            },
+            SettlementEntry {
+                payer: "Charlie".into(),
+                payee: "Alice".into(),
+                amount: dec!(30.00),
+            },
+        ];
+
+        let debts = calculate_debts_with_settlements(&entries, &settlements);
         assert!(debts.is_empty());
     }
 }

@@ -97,4 +97,5 @@ pub struct Settlement {
     pub currency: String,
     pub deleted: bool,
     pub created_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
 }
