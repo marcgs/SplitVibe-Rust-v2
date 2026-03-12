@@ -175,7 +175,7 @@ pub async fn groups_create(
             value = html_escape(&form.name),
         );
         let navbar = navbar_html(&user);
-        return HttpResponse::BadRequest()
+        return HttpResponse::Ok()
             .content_type("text/html; charset=utf-8")
             .body(page_html("Create Group", &navbar, &content));
     }
