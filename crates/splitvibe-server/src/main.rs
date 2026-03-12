@@ -76,6 +76,15 @@ async fn main() -> std::io::Result<()> {
                 web::get().to(groups::handlers::groups_detail),
             )
             .route("/join/{token}", web::get().to(groups::handlers::join_group))
+            // Expense routes
+            .route(
+                "/groups/{id}/expenses/new",
+                web::get().to(groups::handlers::expenses_new),
+            )
+            .route(
+                "/groups/{id}/expenses",
+                web::post().to(groups::handlers::expenses_create),
+            )
             // Leptos routes
             .leptos_routes(routes.clone(), {
                 let options = leptos_options.clone();

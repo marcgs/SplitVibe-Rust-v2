@@ -1,4 +1,5 @@
 pub mod models;
+pub mod split;
 pub mod validation;
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
+use rust_decimal::Decimal;
 use sqlx::PgPool;
 
-use crate::models::{Group, GroupMember};
+use crate::models::{Expense, Group, GroupMember};
 
 /// A group with its member count for listing.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
@@ -141,4 +142,89 @@ pub async fn add_group_member(
     .fetch_optional(pool)
     .await?;
     Ok(result)
+}
+
+/// Expense summary for display in group detail.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct ExpenseSummary {
+    pub id: String,
+    pub title: String,
+    pub amount: Decimal,
+    pub currency: String,
+    pub expense_date: chrono::NaiveDate,
+    pub payer_name: String,
+}
+
+/// Create an expense with payer and split records.
+#[allow(clippy::too_many_arguments)]
+pub async fn create_expense(
+    pool: &PgPool,
+    expense_id: &str,
+    group_id: &str,
+    title: &str,
+    amount: Decimal,
+    payer_user_id: &str,
+    created_by: &str,
+    expense_date: chrono::NaiveDate,
+    payer_record_id: &str,
+    splits: &[(String, String, Decimal)], // (split_id, user_id, amount)
+) -> Result<Expense, sqlx::Error> {
+    let expense = sqlx::query_as::<_, Expense>(
+        r#"INSERT INTO expenses (id, group_id, title, amount, created_by, expense_date)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           RETURNING *"#,
+    )
+    .bind(expense_id)
+    .bind(group_id)
+    .bind(title)
+    .bind(amount)
+    .bind(created_by)
+    .bind(expense_date)
+    .fetch_one(pool)
+    .await?;
+
+    // Insert payer record
+    sqlx::query(
+        "INSERT INTO expense_payers (id, expense_id, user_id, amount) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(payer_record_id)
+    .bind(expense_id)
+    .bind(payer_user_id)
+    .bind(amount)
+    .execute(pool)
+    .await?;
+
+    // Insert split records
+    for (split_id, user_id, split_amount) in splits {
+        sqlx::query(
+            "INSERT INTO expense_splits (id, expense_id, user_id, amount) VALUES ($1, $2, $3, $4)",
+        )
+        .bind(split_id)
+        .bind(expense_id)
+        .bind(user_id)
+        .bind(split_amount)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(expense)
+}
+
+/// List expenses for a group with payer display name.
+pub async fn list_expenses_for_group(
+    pool: &PgPool,
+    group_id: &str,
+) -> Result<Vec<ExpenseSummary>, sqlx::Error> {
+    sqlx::query_as::<_, ExpenseSummary>(
+        r#"SELECT e.id, e.title, e.amount, e.currency, e.expense_date,
+                  u.display_name AS payer_name
+           FROM expenses e
+           JOIN expense_payers ep ON e.id = ep.expense_id
+           JOIN users u ON ep.user_id = u.id
+           WHERE e.group_id = $1 AND e.deleted = false
+           ORDER BY e.expense_date DESC, e.created_at DESC"#,
+    )
+    .bind(group_id)
+    .fetch_all(pool)
+    .await
 }

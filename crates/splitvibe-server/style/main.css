@@ -234,3 +234,68 @@ a:hover {
 .member-avatar {
     border-radius: 50%;
 }
+
+.group-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin: 1rem 0;
+}
+
+.expense-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 1rem 0;
+}
+
+.expense-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+}
+
+.expense-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.expense-title {
+    font-weight: 600;
+}
+
+.expense-meta {
+    color: #718096;
+    font-size: 0.875rem;
+}
+
+.expense-amount {
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: #2d3748;
+}
+
+.empty-state {
+    color: #718096;
+    font-style: italic;
+}
+
+.checkbox-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+select.form-input {
+    appearance: auto;
+}
