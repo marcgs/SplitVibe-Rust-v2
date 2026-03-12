@@ -85,6 +85,19 @@ async fn main() -> std::io::Result<()> {
                 "/groups/{id}/expenses",
                 web::post().to(groups::handlers::expenses_create),
             )
+            // Settlement routes
+            .route(
+                "/groups/{id}/settlements/new",
+                web::get().to(groups::handlers::settlements_new),
+            )
+            .route(
+                "/groups/{id}/settlements",
+                web::post().to(groups::handlers::settlements_create),
+            )
+            .route(
+                "/groups/{group_id}/settlements/{settlement_id}/delete",
+                web::post().to(groups::handlers::settlements_delete),
+            )
             // Leptos routes
             .leptos_routes(routes.clone(), {
                 let options = leptos_options.clone();

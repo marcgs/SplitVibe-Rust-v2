@@ -1,3 +1,4 @@
+use serial_test::serial;
 use splitvibe_db::queries;
 use sqlx::PgPool;
 
@@ -38,6 +39,7 @@ async fn insert_mock_user(pool: &PgPool, id: &str, name: &str) {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_create_group_returns_group_with_correct_fields() {
     let pool = setup_pool().await;
     insert_mock_user(&pool, "alice-001", "Alice").await;
@@ -62,6 +64,7 @@ async fn test_create_group_returns_group_with_correct_fields() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_create_group_adds_creator_as_member() {
     let pool = setup_pool().await;
     insert_mock_user(&pool, "alice-001", "Alice").await;
@@ -84,6 +87,7 @@ async fn test_create_group_adds_creator_as_member() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_list_groups_for_user_returns_groups_with_member_count() {
     let pool = setup_pool().await;
     insert_mock_user(&pool, "alice-001", "Alice").await;
@@ -113,6 +117,7 @@ async fn test_list_groups_for_user_returns_groups_with_member_count() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_get_group_by_invite_token() {
     let pool = setup_pool().await;
     insert_mock_user(&pool, "alice-001", "Alice").await;
@@ -142,6 +147,7 @@ async fn test_get_group_by_invite_token() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_add_group_member_prevents_duplicates() {
     let pool = setup_pool().await;
     insert_mock_user(&pool, "alice-001", "Alice").await;
@@ -165,6 +171,7 @@ async fn test_add_group_member_prevents_duplicates() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_get_group_members_returns_user_info() {
     let pool = setup_pool().await;
     insert_mock_user(&pool, "alice-001", "Alice").await;
@@ -187,6 +194,7 @@ async fn test_get_group_members_returns_user_info() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_list_groups_excludes_non_member_groups() {
     let pool = setup_pool().await;
     insert_mock_user(&pool, "alice-001", "Alice").await;

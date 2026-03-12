@@ -1,4 +1,5 @@
 use rust_decimal_macros::dec;
+use serial_test::serial;
 use splitvibe_db::queries;
 use sqlx::PgPool;
 
@@ -59,6 +60,7 @@ async fn setup_group_with_members(pool: &PgPool) {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_create_expense_returns_expense() {
     let pool = setup_pool().await;
     setup_group_with_members(&pool).await;
@@ -90,6 +92,7 @@ async fn test_create_expense_returns_expense() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_list_expenses_for_group() {
     let pool = setup_pool().await;
     setup_group_with_members(&pool).await;
@@ -126,6 +129,7 @@ async fn test_list_expenses_for_group() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_list_expenses_excludes_deleted() {
     let pool = setup_pool().await;
     setup_group_with_members(&pool).await;
@@ -160,6 +164,7 @@ async fn test_list_expenses_excludes_deleted() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_get_expense_data_for_balances() {
     let pool = setup_pool().await;
     setup_group_with_members(&pool).await;
@@ -197,6 +202,7 @@ async fn test_get_expense_data_for_balances() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_get_expense_data_excludes_deleted() {
     let pool = setup_pool().await;
     setup_group_with_members(&pool).await;

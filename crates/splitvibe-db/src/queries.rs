@@ -273,3 +273,87 @@ pub async fn get_expense_data_for_balances(
 
     Ok((payers, splits))
 }
+
+/// Settlement with display names for the payer and payee.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct SettlementInfo {
+    pub id: String,
+    pub payer_name: String,
+    pub payee_name: String,
+    pub payer_id: String,
+    pub payee_id: String,
+    pub amount: Decimal,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub can_delete: bool,
+}
+
+/// Create a settlement record.
+pub async fn create_settlement(
+    pool: &PgPool,
+    id: &str,
+    group_id: &str,
+    payer_id: &str,
+    payee_id: &str,
+    amount: Decimal,
+) -> Result<crate::models::Settlement, sqlx::Error> {
+    sqlx::query_as::<_, crate::models::Settlement>(
+        "INSERT INTO settlements (id, group_id, payer_id, payee_id, amount) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+    )
+    .bind(id)
+    .bind(group_id)
+    .bind(payer_id)
+    .bind(payee_id)
+    .bind(amount)
+    .fetch_one(pool)
+    .await
+}
+
+/// List active settlements for a group with display names and delete eligibility.
+pub async fn list_settlements_for_group(
+    pool: &PgPool,
+    group_id: &str,
+) -> Result<Vec<SettlementInfo>, sqlx::Error> {
+    sqlx::query_as::<_, SettlementInfo>(
+        r#"SELECT s.id, u1.display_name AS payer_name, u2.display_name AS payee_name,
+                  s.payer_id, s.payee_id, s.amount, s.created_at,
+                  (s.created_at > now() - interval '24 hours') AS can_delete
+           FROM settlements s
+           JOIN users u1 ON s.payer_id = u1.id
+           JOIN users u2 ON s.payee_id = u2.id
+           WHERE s.group_id = $1 AND s.deleted = false
+           ORDER BY s.created_at DESC"#,
+    )
+    .bind(group_id)
+    .fetch_all(pool)
+    .await
+}
+
+/// Soft-delete a settlement (set deleted=true, deleted_at=now()).
+pub async fn delete_settlement(
+    pool: &PgPool,
+    settlement_id: &str,
+    group_id: &str,
+) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        "UPDATE settlements SET deleted = true, deleted_at = now() WHERE id = $1 AND group_id = $2 AND deleted = false AND created_at > now() - interval '24 hours'",
+    )
+    .bind(settlement_id)
+    .bind(group_id)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() > 0)
+}
+
+/// Fetch active settlements for balance calculation.
+pub async fn get_settlements_for_balances(
+    pool: &PgPool,
+    group_id: &str,
+) -> Result<Vec<(String, String, Decimal)>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, (String, String, Decimal)>(
+        "SELECT payer_id, payee_id, amount FROM settlements WHERE group_id = $1 AND deleted = false",
+    )
+    .bind(group_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}

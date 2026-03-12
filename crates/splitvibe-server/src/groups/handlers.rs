@@ -287,6 +287,75 @@ pub async fn groups_detail(
         format!(r#"<div class="expense-list">{}</div>"#, items.join("\n"))
     };
 
+    // Fetch settlements for display
+    let settlements_list =
+        match splitvibe_db::queries::list_settlements_for_group(pool.get_ref(), &group_id).await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!("Failed to list settlements: {}", e);
+                Vec::new()
+            }
+        };
+
+    let settlements_html = if settlements_list.is_empty() {
+        String::new()
+    } else {
+        let items: Vec<String> = settlements_list
+            .iter()
+            .map(|s| {
+                let delete_btn = if s.can_delete {
+                    format!(
+                        r#"<form method="post" action="/groups/{}/settlements/{}/delete" style="display:inline">
+                            <button type="submit" class="btn-delete">Delete</button>
+                        </form>"#,
+                        html_escape(&group_id),
+                        html_escape(&s.id),
+                    )
+                } else {
+                    String::new()
+                };
+                format!(
+                    r#"<div class="settlement-item">
+                        <div class="settlement-info">
+                            <span class="settlement-desc">{payer} paid {payee}</span>
+                            <span class="expense-meta">{date}</span>
+                        </div>
+                        <span class="settlement-amount">${amount}</span>
+                        {delete_btn}
+                    </div>"#,
+                    payer = html_escape(&s.payer_name),
+                    payee = html_escape(&s.payee_name),
+                    amount = s.amount.round_dp(2),
+                    date = s.created_at.format("%Y-%m-%d"),
+                )
+            })
+            .collect();
+        format!(r#"<div class="settlement-list">{}</div>"#, items.join("\n"))
+    };
+
+    // Fetch settlement data for balance calculation
+    let settlement_entries = match splitvibe_db::queries::get_settlements_for_balances(
+        pool.get_ref(),
+        &group_id,
+    )
+    .await
+    {
+        Ok(rows) => rows
+            .into_iter()
+            .map(
+                |(payer, payee, amount)| splitvibe_core::balance::SettlementEntry {
+                    payer,
+                    payee,
+                    amount,
+                },
+            )
+            .collect::<Vec<_>>(),
+        Err(e) => {
+            tracing::error!("Failed to get settlements for balances: {}", e);
+            Vec::new()
+        }
+    };
+
     // Fetch balance data and calculate debts
     let balances_html =
         match splitvibe_db::queries::get_expense_data_for_balances(pool.get_ref(), &group_id).await
@@ -313,7 +382,10 @@ pub async fn groups_detail(
 
                 let entries: Vec<splitvibe_core::balance::ExpenseEntry> =
                     expense_map.into_values().collect();
-                let debts = splitvibe_core::balance::calculate_debts(&entries);
+                let debts = splitvibe_core::balance::calculate_debts_with_settlements(
+                    &entries,
+                    &settlement_entries,
+                );
 
                 if debts.is_empty() {
                     r#"<p class="empty-state">All settled up!</p>"#.to_string()
@@ -368,6 +440,11 @@ pub async fn groups_detail(
             {expenses}
             <h2>Balances</h2>
             {balances}
+            <div class="group-actions">
+                <a href="/groups/{group_id}/settlements/new" class="btn btn-primary">Record Settlement</a>
+            </div>
+            <h2>Settlements</h2>
+            {settlements}
             <h2>Members ({count})</h2>
             <div class="member-list">
                 {members}
@@ -379,6 +456,11 @@ pub async fn groups_detail(
         invite_url = invite_url,
         expenses = expenses_html,
         balances = balances_html,
+        settlements = if settlements_html.is_empty() {
+            r#"<p class="empty-state">No settlements yet.</p>"#.to_string()
+        } else {
+            settlements_html
+        },
         count = members.len(),
         members = members_html.join("\n"),
     );
@@ -740,6 +822,208 @@ pub async fn expenses_create(
             .finish(),
         Err(e) => {
             tracing::error!("Failed to create expense: {}", e);
+            HttpResponse::InternalServerError().body("Database error")
+        }
+    }
+}
+
+/// GET /groups/{id}/settlements/new — show the record settlement form.
+pub async fn settlements_new(
+    session: Session,
+    pool: web::Data<sqlx::PgPool>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let user = match require_auth(&session) {
+        Ok(u) => u,
+        Err(r) => return r,
+    };
+
+    let group_id = path.into_inner();
+
+    let group = match splitvibe_db::queries::get_group_by_id(pool.get_ref(), &group_id).await {
+        Ok(Some(g)) => g,
+        Ok(None) => return HttpResponse::NotFound().body("Group not found"),
+        Err(e) => {
+            tracing::error!("Failed to get group: {}", e);
+            return HttpResponse::InternalServerError().body("Database error");
+        }
+    };
+
+    let members = match splitvibe_db::queries::get_group_members(pool.get_ref(), &group_id).await {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::error!("Failed to get group members: {}", e);
+            return HttpResponse::InternalServerError().body("Database error");
+        }
+    };
+
+    let content = settlement_form_html(&group.id, &group.name, &members, None);
+    let navbar = navbar_html(&user);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(page_html("Record Settlement", &navbar, &content))
+}
+
+fn settlement_form_html(
+    group_id: &str,
+    group_name: &str,
+    members: &[splitvibe_db::queries::GroupMemberInfo],
+    error: Option<&str>,
+) -> String {
+    let payer_options: Vec<String> = members
+        .iter()
+        .map(|m| {
+            format!(
+                r#"<option value="{id}">{name}</option>"#,
+                id = html_escape(&m.user_id),
+                name = html_escape(&m.display_name),
+            )
+        })
+        .collect();
+
+    let payee_options = payer_options.clone();
+
+    let error_html = error
+        .map(|msg| format!(r#"<div class="error-message">{}</div>"#, html_escape(msg)))
+        .unwrap_or_default();
+
+    format!(
+        r#"<h1>Record Settlement in {group_name}</h1>
+        {error_html}
+        <form method="post" action="/groups/{group_id}/settlements" class="form">
+            <div class="form-group">
+                <label for="payer_id">Who paid</label>
+                <select id="payer_id" name="payer_id" class="form-input">
+                    {payer_options}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="payee_id">Who received</label>
+                <select id="payee_id" name="payee_id" class="form-input">
+                    {payee_options}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="amount">Amount ($)</label>
+                <input type="number" id="amount" name="amount" required step="0.01" min="0.01" placeholder="0.00" class="form-input"/>
+            </div>
+            <div class="form-group">
+                <label for="date">Date</label>
+                <input type="date" id="date" name="date" class="form-input" value="{today}"/>
+            </div>
+            <button type="submit" class="btn btn-primary">Record Settlement</button>
+            <a href="/groups/{group_id}" class="btn btn-secondary">Cancel</a>
+        </form>"#,
+        group_name = html_escape(group_name),
+        group_id = html_escape(group_id),
+        payer_options = payer_options.join("\n"),
+        payee_options = payee_options.join("\n"),
+        today = chrono::Local::now().format("%Y-%m-%d"),
+    )
+}
+
+#[derive(serde::Deserialize)]
+pub struct CreateSettlementForm {
+    pub payer_id: String,
+    pub payee_id: String,
+    pub amount: String,
+}
+
+/// POST /groups/{id}/settlements — create a settlement.
+pub async fn settlements_create(
+    session: Session,
+    pool: web::Data<sqlx::PgPool>,
+    path: web::Path<String>,
+    form: web::Form<CreateSettlementForm>,
+) -> HttpResponse {
+    let user = match require_auth(&session) {
+        Ok(u) => u,
+        Err(r) => return r,
+    };
+
+    let group_id = path.into_inner();
+
+    let group = match splitvibe_db::queries::get_group_by_id(pool.get_ref(), &group_id).await {
+        Ok(Some(g)) => g,
+        Ok(None) => return HttpResponse::NotFound().body("Group not found"),
+        Err(e) => {
+            tracing::error!("Failed to get group: {}", e);
+            return HttpResponse::InternalServerError().body("Database error");
+        }
+    };
+
+    let members = match splitvibe_db::queries::get_group_members(pool.get_ref(), &group_id).await {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::error!("Failed to get group members: {}", e);
+            return HttpResponse::InternalServerError().body("Database error");
+        }
+    };
+
+    let show_error = |msg: &str| {
+        let content = settlement_form_html(&group.id, &group.name, &members, Some(msg));
+        let navbar = navbar_html(&user);
+        HttpResponse::Ok()
+            .content_type("text/html; charset=utf-8")
+            .body(page_html("Record Settlement", &navbar, &content))
+    };
+
+    // Validate amount
+    let amount = match form.amount.trim().parse::<rust_decimal::Decimal>() {
+        Ok(a) if a > rust_decimal::Decimal::ZERO => a,
+        _ => return show_error("Amount must be a positive number."),
+    };
+
+    // Validate payer != payee
+    if form.payer_id == form.payee_id {
+        return show_error("Payer and payee must be different people.");
+    }
+
+    let settlement_id = cuid2::create_id();
+
+    match splitvibe_db::queries::create_settlement(
+        pool.get_ref(),
+        &settlement_id,
+        &group.id,
+        &form.payer_id,
+        &form.payee_id,
+        amount,
+    )
+    .await
+    {
+        Ok(_) => HttpResponse::SeeOther()
+            .insert_header(("Location", format!("/groups/{}", group.id)))
+            .finish(),
+        Err(e) => {
+            tracing::error!("Failed to create settlement: {}", e);
+            HttpResponse::InternalServerError().body("Database error")
+        }
+    }
+}
+
+/// POST /groups/{group_id}/settlements/{settlement_id}/delete — soft-delete a settlement.
+pub async fn settlements_delete(
+    session: Session,
+    pool: web::Data<sqlx::PgPool>,
+    path: web::Path<(String, String)>,
+) -> HttpResponse {
+    let _user = match require_auth(&session) {
+        Ok(u) => u,
+        Err(r) => return r,
+    };
+
+    let (group_id, settlement_id) = path.into_inner();
+
+    match splitvibe_db::queries::delete_settlement(pool.get_ref(), &settlement_id, &group_id).await
+    {
+        Ok(true) => HttpResponse::SeeOther()
+            .insert_header(("Location", format!("/groups/{}", group_id)))
+            .finish(),
+        Ok(false) => HttpResponse::SeeOther()
+            .insert_header(("Location", format!("/groups/{}", group_id)))
+            .finish(),
+        Err(e) => {
+            tracing::error!("Failed to delete settlement: {}", e);
             HttpResponse::InternalServerError().body("Database error")
         }
     }
