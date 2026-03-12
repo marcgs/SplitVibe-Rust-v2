@@ -1,4 +1,5 @@
 pub mod models;
+pub mod queries;
 
 use sqlx::PgPool;
 
