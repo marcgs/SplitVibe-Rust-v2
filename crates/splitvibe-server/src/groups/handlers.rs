@@ -327,9 +327,10 @@ pub async fn groups_detail(
                     let items: Vec<String> = debts
                         .iter()
                         .map(|d| {
-                            let from_name =
-                                name_map.get(d.from.as_str()).unwrap_or(&d.from.as_str());
-                            let to_name = name_map.get(d.to.as_str()).unwrap_or(&d.to.as_str());
+                            let from_str = d.from.as_str();
+                            let to_str = d.to.as_str();
+                            let from_name = name_map.get(from_str).unwrap_or(&from_str);
+                            let to_name = name_map.get(to_str).unwrap_or(&to_str);
                             format!(
                                 r#"<div class="balance-item">
                                 <span class="balance-from">{from}</span>
