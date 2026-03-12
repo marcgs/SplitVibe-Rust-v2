@@ -287,6 +287,72 @@ pub async fn groups_detail(
         format!(r#"<div class="expense-list">{}</div>"#, items.join("\n"))
     };
 
+    // Fetch balance data and calculate debts
+    let balances_html =
+        match splitvibe_db::queries::get_expense_data_for_balances(pool.get_ref(), &group_id).await
+        {
+            Ok((payers, splits)) => {
+                // Group by expense_id to create ExpenseEntry list
+                let mut expense_map: std::collections::HashMap<
+                    String,
+                    splitvibe_core::balance::ExpenseEntry,
+                > = std::collections::HashMap::new();
+                for p in &payers {
+                    expense_map.entry(p.expense_id.clone()).or_insert_with(|| {
+                        splitvibe_core::balance::ExpenseEntry {
+                            payer: p.user_id.clone(),
+                            splits: Vec::new(),
+                        }
+                    });
+                }
+                for s in &splits {
+                    if let Some(entry) = expense_map.get_mut(&s.expense_id) {
+                        entry.splits.push((s.user_id.clone(), s.amount));
+                    }
+                }
+
+                let entries: Vec<splitvibe_core::balance::ExpenseEntry> =
+                    expense_map.into_values().collect();
+                let debts = splitvibe_core::balance::calculate_debts(&entries);
+
+                if debts.is_empty() {
+                    r#"<p class="empty-state">All settled up!</p>"#.to_string()
+                } else {
+                    // Map user IDs to display names
+                    let name_map: std::collections::HashMap<&str, &str> = members
+                        .iter()
+                        .map(|m| (m.user_id.as_str(), m.display_name.as_str()))
+                        .collect();
+
+                    let items: Vec<String> = debts
+                        .iter()
+                        .map(|d| {
+                            let from_str = d.from.as_str();
+                            let to_str = d.to.as_str();
+                            let from_name = name_map.get(from_str).unwrap_or(&from_str);
+                            let to_name = name_map.get(to_str).unwrap_or(&to_str);
+                            format!(
+                                r#"<div class="balance-item">
+                                <span class="balance-from">{from}</span>
+                                <span class="balance-arrow">owes</span>
+                                <span class="balance-to">{to}</span>
+                                <span class="balance-amount">${amount}</span>
+                            </div>"#,
+                                from = html_escape(from_name),
+                                to = html_escape(to_name),
+                                amount = d.amount.round_dp(2),
+                            )
+                        })
+                        .collect();
+                    format!(r#"<div class="balance-list">{}</div>"#, items.join("\n"))
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to get balance data: {}", e);
+                r#"<p class="empty-state">Could not calculate balances.</p>"#.to_string()
+            }
+        };
+
     let invite_url = format!("/join/{}", html_escape(&group.invite_token));
 
     let content = format!(
@@ -300,6 +366,8 @@ pub async fn groups_detail(
             </div>
             <h2>Expenses</h2>
             {expenses}
+            <h2>Balances</h2>
+            {balances}
             <h2>Members ({count})</h2>
             <div class="member-list">
                 {members}
@@ -310,6 +378,7 @@ pub async fn groups_detail(
         group_id = html_escape(&group.id),
         invite_url = invite_url,
         expenses = expenses_html,
+        balances = balances_html,
         count = members.len(),
         members = members_html.join("\n"),
     );

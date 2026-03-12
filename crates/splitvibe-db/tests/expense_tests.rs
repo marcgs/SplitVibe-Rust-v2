@@ -158,3 +158,75 @@ async fn test_list_expenses_excludes_deleted() {
         .unwrap();
     assert_eq!(expenses.len(), 0);
 }
+
+#[tokio::test]
+async fn test_get_expense_data_for_balances() {
+    let pool = setup_pool().await;
+    setup_group_with_members(&pool).await;
+
+    let splits = vec![
+        ("sp-1".into(), "alice-001".into(), dec!(30.00)),
+        ("sp-2".into(), "bob-002".into(), dec!(30.00)),
+        ("sp-3".into(), "charlie-003".into(), dec!(30.00)),
+    ];
+
+    queries::create_expense(
+        &pool,
+        "exp-1",
+        "grp-1",
+        "Dinner",
+        dec!(90.00),
+        "alice-001",
+        "alice-001",
+        chrono::Local::now().date_naive(),
+        "pay-1",
+        &splits,
+    )
+    .await
+    .unwrap();
+
+    let (payers, splits) = queries::get_expense_data_for_balances(&pool, "grp-1")
+        .await
+        .expect("Failed to get balance data");
+
+    assert_eq!(payers.len(), 1);
+    assert_eq!(payers[0].user_id, "alice-001");
+    assert_eq!(payers[0].amount, dec!(90.00));
+
+    assert_eq!(splits.len(), 3);
+}
+
+#[tokio::test]
+async fn test_get_expense_data_excludes_deleted() {
+    let pool = setup_pool().await;
+    setup_group_with_members(&pool).await;
+
+    let splits = vec![("sp-1".into(), "alice-001".into(), dec!(50.00))];
+
+    queries::create_expense(
+        &pool,
+        "exp-1",
+        "grp-1",
+        "Lunch",
+        dec!(50.00),
+        "alice-001",
+        "alice-001",
+        chrono::Local::now().date_naive(),
+        "pay-1",
+        &splits,
+    )
+    .await
+    .unwrap();
+
+    sqlx::query("UPDATE expenses SET deleted = true WHERE id = 'exp-1'")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let (payers, splits) = queries::get_expense_data_for_balances(&pool, "grp-1")
+        .await
+        .unwrap();
+
+    assert_eq!(payers.len(), 0);
+    assert_eq!(splits.len(), 0);
+}

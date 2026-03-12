@@ -299,3 +299,38 @@ a:hover {
 select.form-input {
     appearance: auto;
 }
+
+.balance-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 1rem 0;
+}
+
+.balance-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+}
+
+.balance-from {
+    font-weight: 600;
+}
+
+.balance-arrow {
+    color: #718096;
+}
+
+.balance-to {
+    font-weight: 600;
+}
+
+.balance-amount {
+    margin-left: auto;
+    font-weight: 600;
+    color: #e53e3e;
+}
