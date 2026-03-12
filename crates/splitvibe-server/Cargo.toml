@@ -8,6 +8,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 splitvibe-core = { path = "../splitvibe-core" }
+splitvibe-db = { path = "../splitvibe-db", optional = true }
 
 leptos = { version = "0.7" }
 leptos_meta = { version = "0.7" }
@@ -16,12 +17,19 @@ leptos_router = { version = "0.7" }
 leptos_actix = { version = "0.7", optional = true }
 actix-web = { version = "4", optional = true }
 actix-files = { version = "0.6", optional = true }
+actix-session = { version = "0.10", features = ["cookie-session"], optional = true }
+
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"], optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", optional = true }
 
 wasm-bindgen = { version = "0.2", optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
 
 tracing = "0.1"
 dotenvy = { version = "0.15", optional = true }
+chrono = { version = "0.4", optional = true }
+cuid2 = { version = "0.1", optional = true }
 
 [features]
 default = []
@@ -32,7 +40,13 @@ ssr = [
     "dep:leptos_actix",
     "dep:actix-web",
     "dep:actix-files",
+    "dep:actix-session",
+    "dep:splitvibe-db",
+    "dep:sqlx",
+    "dep:serde_json",
     "dep:dotenvy",
+    "dep:chrono",
+    "dep:cuid2",
 ]
 hydrate = [
     "leptos/hydrate",

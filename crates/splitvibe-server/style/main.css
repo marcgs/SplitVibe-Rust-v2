@@ -53,3 +53,54 @@ a:hover {
 .google-login-btn:hover {
     background: #edf2f7;
 }
+
+.error-message {
+    background: #fed7d7;
+    color: #9b2c2c;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    margin: 1rem auto;
+    max-width: 500px;
+}
+
+.navbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 2rem;
+    background: white;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.navbar-brand a {
+    font-weight: bold;
+    font-size: 1.25rem;
+    color: #2d3748;
+}
+
+.navbar-user {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.navbar-avatar {
+    border-radius: 50%;
+}
+
+.navbar-username {
+    font-weight: 500;
+}
+
+.navbar-logout button {
+    background: none;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.25rem;
+    padding: 0.25rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+}
+
+.navbar-logout button:hover {
+    background: #edf2f7;
+}
