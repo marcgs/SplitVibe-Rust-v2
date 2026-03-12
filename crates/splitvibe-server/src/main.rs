@@ -27,6 +27,30 @@ async fn main() -> std::io::Result<()> {
                 move || shell(options.clone())
             })
             .service(Files::new("/", &site_root))
+            .default_service(web::to(|| async {
+                HttpResponse::NotFound()
+                    .content_type("text/html; charset=utf-8")
+                    .body(
+                        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SplitVibe - Not Found</title>
+    <link id="leptos" rel="stylesheet" href="/pkg/splitvibe.css">
+</head>
+<body>
+    <main>
+        <div class="container">
+            <h1>404 - Page Not Found</h1>
+            <p>The page you are looking for does not exist.</p>
+            <a href="/">Go Home</a>
+        </div>
+    </main>
+</body>
+</html>"#,
+                    )
+            }))
             .wrap(middleware::Compress::default())
     })
     .bind(&addr)?
