@@ -278,7 +278,7 @@ pub async fn groups_detail(
                         <span class="expense-amount">${amount}</span>
                     </div>"#,
                     title = html_escape(&e.title),
-                    amount = e.amount,
+                    amount = e.amount.round_dp(2),
                     payer = html_escape(&e.payer_name),
                     date = e.expense_date,
                 )
@@ -512,15 +512,51 @@ fn expense_form_html(
     )
 }
 
-#[derive(serde::Deserialize, Clone)]
+#[derive(Clone)]
 pub struct CreateExpenseForm {
     pub title: String,
     pub amount: String,
     pub payer_id: String,
-    #[serde(default)]
     pub split_members: Vec<String>,
-    #[serde(default)]
     pub date: String,
+}
+
+fn parse_expense_form(body: &[u8]) -> CreateExpenseForm {
+    let body_str = String::from_utf8_lossy(body);
+    let mut title = String::new();
+    let mut amount = String::new();
+    let mut payer_id = String::new();
+    let mut split_members = Vec::new();
+    let mut date = String::new();
+
+    for pair in body_str.split('&') {
+        let mut parts = pair.splitn(2, '=');
+        let key = parts.next().unwrap_or("");
+        let value = parts.next().unwrap_or("").replace('+', " ");
+        let value = urlencoding::decode(&value)
+            .unwrap_or(std::borrow::Cow::Borrowed(""))
+            .to_string();
+        match key {
+            "title" => title = value,
+            "amount" => amount = value,
+            "payer_id" => payer_id = value,
+            "split_members" => {
+                if !value.is_empty() {
+                    split_members.push(value);
+                }
+            }
+            "date" => date = value,
+            _ => {}
+        }
+    }
+
+    CreateExpenseForm {
+        title,
+        amount,
+        payer_id,
+        split_members,
+        date,
+    }
 }
 
 /// POST /groups/{id}/expenses — create a new expense.
@@ -528,8 +564,10 @@ pub async fn expenses_create(
     session: Session,
     pool: web::Data<sqlx::PgPool>,
     path: web::Path<String>,
-    form: web::Form<CreateExpenseForm>,
+    body: web::Bytes,
 ) -> HttpResponse {
+    // Parse form manually to handle repeated split_members[] fields
+    let form = parse_expense_form(&body);
     let user = match require_auth(&session) {
         Ok(u) => u,
         Err(r) => return r,
