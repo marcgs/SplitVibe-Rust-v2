@@ -1,0 +1,51 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ACR_NAME: splitvibeacr
+  CONTAINER_APP_NAME: splitvibe-app
+  RESOURCE_GROUP: rg-splitvibe
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to ACR
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      - name: Build Docker image
+        run: docker build -t ${{ env.ACR_NAME }}.azurecr.io/splitvibe:${{ env.IMAGE_TAG }} .
+
+      - name: Push to ACR
+        run: docker push ${{ env.ACR_NAME }}.azurecr.io/splitvibe:${{ env.IMAGE_TAG }}
+
+      - name: Tag as latest
+        run: |
+          docker tag ${{ env.ACR_NAME }}.azurecr.io/splitvibe:${{ env.IMAGE_TAG }} ${{ env.ACR_NAME }}.azurecr.io/splitvibe:latest
+          docker push ${{ env.ACR_NAME }}.azurecr.io/splitvibe:latest
+
+      - name: Update Container App revision
+        run: |
+          az containerapp update \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.ACR_NAME }}.azurecr.io/splitvibe:${{ env.IMAGE_TAG }}
